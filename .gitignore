@@ -1,0 +1,71 @@
+# Build directories
+build/
+out/
+cmake-build-*/
+
+# IDE files
+.vs/
+.vscode/
+*.vcxproj*
+*.sln
+*.suo
+*.user
+
+# Compiled binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+!cmake/*.cmake.in
+
+# Ninja files
+build.ninja
+.ninja_deps
+.ninja_log
+
+# Compile commands
+compile_commands.json
+
+# Test results
+Testing/
+CTestTestfile.cmake
+
+# Package files
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Coverage files
+*.gcov
+*.gcda
+*.gcno
+coverage/
+
+# Profiling files
+*.prof
+gmon.out
+
+# Documentation build
+docs/html/
+docs/latex/
