@@ -37,3 +37,7 @@ cmake --build . -j
 ## License
 
 MIT. See the repository license headers and SPDX tags in sources.
+
+## Docs
+
+- Protocol reference: `docs/mkv_format_analysis.md` — Matroska (MKV) container structure and element overview.
