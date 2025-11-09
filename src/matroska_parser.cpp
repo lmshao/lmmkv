@@ -10,7 +10,9 @@
 
 #include <cstring>
 
+#include "ebml_reader.h"
 #include "internal_logger.h"
+#include "lmcore/byte_order.h"
 
 namespace lmshao::lmmkv {
 
@@ -21,7 +23,6 @@ static constexpr uint64_t kInfoId = 0x1549A966ULL;        // Info
 static constexpr uint64_t kTimecodeScaleId = 0x2AD7B1ULL; // TimecodeScale
 static constexpr uint64_t kDurationId = 0x4489ULL;        // Duration
 
-// Minimal Parse: read top-level EBML header then Segment; optionally read Info
 bool MatroskaParser::ParseBuffer(const uint8_t *data, size_t size, MatroskaInfo &info)
 {
     BufferCursor cur(data, size);
@@ -65,26 +66,18 @@ bool MatroskaParser::ParseBuffer(const uint8_t *data, size_t size, MatroskaInfo 
             size_t info_start = cur.Tell();
             size_t info_end = info_start + static_cast<size_t>(child.size);
 
-            auto be_to_float32 = [](const uint8_t *p) -> float {
-                uint8_t tmp[4] = {p[0], p[1], p[2], p[3]};
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-                std::swap(tmp[0], tmp[3]);
-                std::swap(tmp[1], tmp[2]);
-#endif
+            // Use lmcore::ByteOrder to convert big-endian IEEE-754 floats
+            using lmshao::lmcore::ByteOrder;
+            auto ReadBEFloat32 = [](const uint8_t *p) -> float {
+                uint32_t bits = ByteOrder::ReadBE32(p);
                 float f;
-                std::memcpy(&f, tmp, sizeof(f));
+                std::memcpy(&f, &bits, sizeof(f));
                 return f;
             };
-            auto be_to_float64 = [](const uint8_t *p) -> double {
-                uint8_t tmp[8] = {p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]};
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-                std::swap(tmp[0], tmp[7]);
-                std::swap(tmp[1], tmp[6]);
-                std::swap(tmp[2], tmp[5]);
-                std::swap(tmp[3], tmp[4]);
-#endif
+            auto ReadBEFloat64 = [](const uint8_t *p) -> double {
+                uint64_t bits = ByteOrder::ReadBE64(p);
                 double d;
-                std::memcpy(&d, tmp, sizeof(d));
+                std::memcpy(&d, &bits, sizeof(d));
                 return d;
             };
 
@@ -116,9 +109,9 @@ bool MatroskaParser::ParseBuffer(const uint8_t *data, size_t size, MatroskaInfo 
                     size_t r = cur.Read(buf, to_read);
                     if (r == to_read && (to_read == 4 || to_read == 8)) {
                         if (to_read == 4) {
-                            info.duration_seconds = static_cast<double>(be_to_float32(buf));
+                            info.duration_seconds = static_cast<double>(ReadBEFloat32(buf));
                         } else {
-                            info.duration_seconds = be_to_float64(buf);
+                            info.duration_seconds = ReadBEFloat64(buf);
                         }
                     }
                 } else {

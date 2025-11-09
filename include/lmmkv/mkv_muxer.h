@@ -11,8 +11,8 @@
 
 #include <cstdint>
 #include <memory>
-#include <vector>
 
+#include "lmcore/noncopyable.h"
 #include "lmmkv/mkv_listeners.h"
 #include "lmmkv/mkv_types.h"
 
@@ -27,15 +27,10 @@ struct MkvMuxerOptions {
     bool enable_lacing = false;
 };
 
-class MkvMuxer {
+class MkvMuxer final : public lmcore::NonCopyable {
 public:
     explicit MkvMuxer(const MkvMuxerOptions &opts);
     ~MkvMuxer();
-
-    MkvMuxer(const MkvMuxer &) = delete;
-    MkvMuxer &operator=(const MkvMuxer &) = delete;
-    MkvMuxer(MkvMuxer &&) noexcept;
-    MkvMuxer &operator=(MkvMuxer &&) noexcept;
 
     void SetListener(IMkvMuxListener *listener);
     // Writer interface will be provided by examples/utilities as needed

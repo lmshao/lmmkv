@@ -8,9 +8,7 @@
 
 #include <cstdio>
 #include <cstring>
-#include <memory>
 
-#include "internal_logger.h"
 #include "lmcore/mapped_file.h"
 #include "lmmkv/matroska_parser.h"
 
@@ -24,7 +22,7 @@ int main(int argc, char **argv)
     const std::string path = argv[1];
     auto mf = lmshao::lmcore::MappedFile::Open(path);
     if (!mf || !mf->IsValid()) {
-        LMMKV_LOGE("Cannot open input file: %s", path.c_str());
+        printf("Cannot open input file: %s", path.c_str());
         return 2;
     }
 
@@ -33,11 +31,11 @@ int main(int argc, char **argv)
     const uint8_t *data = mf->Data();
     size_t size = mf->Size();
     if (!parser.ParseBuffer(data, size, info)) {
-        LMMKV_LOGE("Parse failed for: %s", path.c_str());
+        printf("Parse failed for: %s", path.c_str());
         return 3;
     }
 
-    std::printf("TimecodeScale(ns): %llu\n", (unsigned long long)info.timecode_scale_ns);
-    std::printf("Duration(s): %.3f\n", info.duration_seconds);
+    printf("TimecodeScale(ns): %llu\n", (unsigned long long)info.timecode_scale_ns);
+    printf("Duration(s): %.3f\n", info.duration_seconds);
     return 0;
 }

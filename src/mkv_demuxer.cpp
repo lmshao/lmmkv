@@ -20,8 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include "ebml_reader.h"
 #include "internal_logger.h"
-#include "lmmkv/ebml_reader.h"
 #include "lmmkv/mkv_listeners.h"
 #include "lmmkv/mkv_types.h"
 
@@ -378,14 +378,17 @@ static inline std::vector<uint8_t> BuildAdtsHeader(const TrackInfo &ti, size_t a
 
 class MkvDemuxer::Impl {
 public:
-    Impl() : running_(false), timecode_scale_ns_(1000000), current_cluster_timecode_ns_(0) {}
+    Impl() : running_(false), timecodeScaleNs_(1000000), currentClusterTimecodeNs_(0)
+    {
+        // Default weak_ptr empty; use nullListener_ on lock fallback
+    }
     ~Impl() { Stop(false); }
     void SetTrackFilter(const std::vector<uint64_t> &tracks)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        track_filter_.clear();
+        trackFilter_.clear();
         for (auto t : tracks) {
-            track_filter_.insert(t);
+            trackFilter_.insert(t);
         }
     }
 
@@ -411,8 +414,12 @@ public:
             return;
         running_ = false;
         LMMKV_LOGI("MKV Demuxer stopped");
-        if (notify && listener_)
-            listener_->OnEndOfStream();
+        if (notify) {
+            auto listener = listener_.lock();
+            if (listener) {
+                listener->OnEndOfStream();
+            }
+        }
     }
 
     bool IsRunning() const
@@ -425,7 +432,6 @@ public:
     {
         BufferCursor cur(data, size);
         DemuxCursor(cur);
-        statistics_["bytes_processed"] += size;
         return size;
     }
 
@@ -480,7 +486,7 @@ public:
             } else if (hdr.id == kClusterId) {
                 ParseCluster(cur, hdr.size);
             } else {
-                statistics_["elements_skipped"]++;
+                // Unknown element skipped
             }
             if (!cur.Seek(payload_end))
                 break;
@@ -491,16 +497,16 @@ public:
 
     // Removed IByteReader adapter; library consumes Input directly
 
-    void SetListener(IMkvDemuxListener *l) { listener_ = l; }
-
-    std::unordered_map<std::string, uint64_t> GetStatistics() const { return statistics_; }
-    void ResetStatistics() { statistics_.clear(); }
+    void SetListener(const std::shared_ptr<IMkvDemuxListener> &l)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        listener_ = l;
+    }
     void Reset()
     {
         tracks_.clear();
-        statistics_.clear();
-        timecode_scale_ns_ = 1000000;
-        current_cluster_timecode_ns_ = 0;
+        timecodeScaleNs_ = 1000000;
+        currentClusterTimecodeNs_ = 0;
     }
 
 private:
@@ -513,19 +519,22 @@ private:
                 break;
             if (sub.id == 0x2AD7B1ULL) { // TimecodeScale
                 // unsigned integer
-                timecode_scale_ns_ = ReadUnsignedBE(cur, static_cast<size_t>(sub.size));
+                timecodeScaleNs_ = ReadUnsignedBE(cur, static_cast<size_t>(sub.size));
             } else if (sub.id == 0x4489ULL) { // Duration (float)
                 (void)ReadFloatBE(cur, static_cast<size_t>(sub.size));
             } else {
                 SkipBytes(cur, static_cast<size_t>(sub.size));
             }
         }
-        LMMKV_LOGI("Info: TimecodeScale=%llu ns", (unsigned long long)timecode_scale_ns_);
-        if (listener_) {
-            MkvInfo info;
-            info.timecode_scale_ns = timecode_scale_ns_;
-            info.duration_seconds = 0.0; // not computed in streaming
-            listener_->OnInfo(info);
+        LMMKV_LOGI("Info: TimecodeScale=%llu ns", (unsigned long long)timecodeScaleNs_);
+        MkvInfo info;
+        info.timecode_scale_ns = timecodeScaleNs_;
+        info.duration_seconds = 0.0; // not computed in streaming
+        {
+            auto listener = listener_.lock();
+            if (listener) {
+                listener->OnInfo(info);
+            }
         }
     }
 
@@ -627,10 +636,8 @@ private:
 
         tracks_[ti.track_number] = ti;
 
-        // Legacy StreamInfo callback removed.
-
         // Emit class-based track info
-        if (listener_) {
+        {
             MkvTrackInfo t;
             t.track_number = ti.track_number;
             t.codec_id = ti.codec_id;
@@ -645,9 +652,12 @@ private:
                 t.sample_rate = ti.aac_sample_rate;
                 t.channels = ti.aac_channel_config;
             }
-            t.metadata["timecode_scale_ns"] = std::to_string(timecode_scale_ns_);
+            t.metadata["timecode_scale_ns"] = std::to_string(timecodeScaleNs_);
             t.codec_private = ti.codec_private;
-            listener_->OnTrack(t);
+            auto listener = listener_.lock();
+            if (listener) {
+                listener->OnTrack(t);
+            }
         }
     }
 
@@ -660,7 +670,7 @@ private:
                 break;
             if (sub.id == kClusterTimecodeId) {
                 uint64_t tc = ReadUnsignedBE(cur, static_cast<size_t>(sub.size));
-                current_cluster_timecode_ns_ = tc * timecode_scale_ns_;
+                currentClusterTimecodeNs_ = tc * timecodeScaleNs_;
             } else if (sub.id == kSimpleBlockId) {
                 ParseSimpleBlock(cur, sub.size);
             } else if (sub.id == kBlockGroupId) {
@@ -789,11 +799,11 @@ private:
 
         auto it = tracks_.find(track_number);
         if (it == tracks_.end()) {
-            statistics_["unknown_track_blocks"]++;
+            // Unknown track, skip
             return;
         }
         const TrackInfo &ti = it->second;
-        uint64_t timestamp_ns = current_cluster_timecode_ns_ + static_cast<int64_t>(rel_tc) * timecode_scale_ns_;
+        uint64_t timestamp_ns = currentClusterTimecodeNs_ + static_cast<int64_t>(rel_tc) * timecodeScaleNs_;
 
         // Calculate per-frame timestamps for laced frames if DefaultDuration is known
         for (size_t i = 0; i < payloads.size(); ++i) {
@@ -811,11 +821,11 @@ private:
                 // For Opus, emit raw Opus packets (no Ogg framing) and let consumer wrap if needed.
                 out.insert(out.end(), payload.begin(), payload.end());
             } else {
-                statistics_["unsupported_codec_frames"]++;
+                // Unsupported codec/frame, skip
                 continue;
             }
-            if (listener_ && !out.empty()) {
-                if (!track_filter_.empty() && track_filter_.count(track_number) == 0) {
+            if (!out.empty()) {
+                if (!trackFilter_.empty() && trackFilter_.count(track_number) == 0) {
                     continue;
                 }
                 uint64_t ts_emit = timestamp_ns;
@@ -828,7 +838,10 @@ private:
                 f.keyframe = keyframe;
                 f.data = out.data();
                 f.size = out.size();
-                listener_->OnFrame(f);
+                auto listener = listener_.lock();
+                if (listener) {
+                    listener->OnFrame(f);
+                }
             }
         }
     }
@@ -836,23 +849,16 @@ private:
 private:
     mutable std::mutex mutex_;
     bool running_;
-    uint64_t timecode_scale_ns_;
-    uint64_t current_cluster_timecode_ns_;
+    uint64_t timecodeScaleNs_;
+    uint64_t currentClusterTimecodeNs_;
 
     std::unordered_map<uint64_t, TrackInfo> tracks_;
-    std::unordered_set<uint64_t> track_filter_;
-    std::unordered_map<std::string, uint64_t> statistics_;
-    // Legacy callbacks removed; use class-based listener only.
-    IMkvDemuxListener *listener_{nullptr};
+    std::unordered_set<uint64_t> trackFilter_;
+    std::weak_ptr<IMkvDemuxListener> listener_;
 };
 
-// MkvDemuxer public API
 MkvDemuxer::MkvDemuxer() : impl_(new Impl) {}
 MkvDemuxer::~MkvDemuxer() = default;
-MkvDemuxer::MkvDemuxer(MkvDemuxer &&) noexcept = default;
-MkvDemuxer &MkvDemuxer::operator=(MkvDemuxer &&) noexcept = default;
-
-// Legacy function-based callbacks removed.
 
 void MkvDemuxer::SetTrackFilter(const std::vector<uint64_t> &tracks)
 {
@@ -872,27 +878,16 @@ bool MkvDemuxer::IsRunning() const
     return impl_->IsRunning();
 }
 
-// Removed legacy ParseData/DemuxInput public APIs
-
-size_t MkvDemuxer::Consume(const uint8_t *data, size_t size, bool /*end_of_stream*/)
+size_t MkvDemuxer::Consume(const uint8_t *data, size_t size)
 {
-    // Minimal streaming: delegate to internal ParseData which adapts buffer to Input.
     return impl_->ParseData(data, size);
 }
 
-void MkvDemuxer::SetListener(IMkvDemuxListener *listener)
+void MkvDemuxer::SetListener(const std::shared_ptr<IMkvDemuxListener> &listener)
 {
     impl_->SetListener(listener);
 }
 
-std::unordered_map<std::string, uint64_t> MkvDemuxer::GetStatistics() const
-{
-    return impl_->GetStatistics();
-}
-void MkvDemuxer::ResetStatistics()
-{
-    impl_->ResetStatistics();
-}
 void MkvDemuxer::Reset()
 {
     impl_->Reset();

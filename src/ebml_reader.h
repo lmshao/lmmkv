@@ -21,29 +21,29 @@ struct EbmlElementHeader {
 
 // Buffer-only cursor for sequential reading over memory
 struct BufferCursor {
-    const uint8_t *data;
-    size_t size;
-    size_t pos;
-    BufferCursor(const uint8_t *d, size_t s) : data(d), size(s), pos(0) {}
+    const uint8_t *data_;
+    size_t size_;
+    size_t pos_;
+    BufferCursor(const uint8_t *d, size_t s) : data_(d), size_(s), pos_(0) {}
     size_t Read(uint8_t *dst, size_t n)
     {
-        size_t remain = (pos < size) ? (size - pos) : 0;
+        size_t remain = (pos_ < size_) ? (size_ - pos_) : 0;
         size_t to_read = n < remain ? n : remain;
         if (to_read > 0) {
             for (size_t i = 0; i < to_read; ++i)
-                dst[i] = data[pos + i];
-            pos += to_read;
+                dst[i] = data_[pos_ + i];
+            pos_ += to_read;
         }
         return to_read;
     }
     bool Seek(size_t offset)
     {
-        if (offset > size)
+        if (offset > size_)
             return false;
-        pos = offset;
+        pos_ = offset;
         return true;
     }
-    size_t Tell() const { return pos; }
+    size_t Tell() const { return pos_; }
 };
 
 // Read EBML varint for element ID; keeps leading 1-bit.

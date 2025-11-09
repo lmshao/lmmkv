@@ -118,10 +118,18 @@ int main(int argc, char **argv)
         void OnFrame(const MkvFrame &frame) override
         {
             auto it = outputs.find(frame.track_number);
-            if (it == outputs.end())
+            if (it == outputs.end()) {
+                printf("No output for track %llu\n", (unsigned long long)frame.track_number);
                 return;
-            if (!it->second.is_open())
+            }
+            if (!it->second.is_open()) {
+                printf("Output for track %llu is not open\n", (unsigned long long)frame.track_number);
                 return;
+            }
+            printf("Write frame  track %llu size %llu, ts: %llu\n", (unsigned long long)frame.track_number,
+                   (unsigned long long)frame.size, (unsigned long long)frame.timecode_ns / 1000000);
+            printf("%02x-%02x-%02x-%02x-%02x...\n", frame.data[0], frame.data[1], frame.data[2], frame.data[3],
+                   frame.data[4]);
             it->second.write(reinterpret_cast<const char *>(frame.data), static_cast<std::streamsize>(frame.size));
         }
         void OnEndOfStream() override
@@ -136,9 +144,9 @@ int main(int argc, char **argv)
         {
             std::fprintf(stderr, "Error(%d): %s\n", code, msg.c_str());
         }
-    } listener(outputs, outdir);
+    };
+    auto listener = std::make_shared<DemoListener>(outputs, outdir);
 
-    // Apply track filter if requested
     if (!track_filter_set.empty()) {
         std::vector<uint64_t> tracks(track_filter_set.begin(), track_filter_set.end());
         demuxer.SetTrackFilter(tracks);
@@ -149,8 +157,8 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    demuxer.SetListener(&listener);
-    (void)demuxer.Consume(data, size, true);
+    demuxer.SetListener(listener);
+    (void)demuxer.Consume(data, size);
     demuxer.Stop();
 
     for (auto &kv : outputs) {

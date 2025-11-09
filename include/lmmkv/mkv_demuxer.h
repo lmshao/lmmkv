@@ -9,15 +9,15 @@
 #ifndef LMSHAO_LMMKV_MKV_DEMUXER_H
 #define LMSHAO_LMMKV_MKV_DEMUXER_H
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "lmmkv/ebml_reader.h"
+#include "lmcore/noncopyable.h"
 #include "lmmkv/mkv_listeners.h"
-#include "lmmkv/mkv_types.h"
 
 namespace lmshao::lmmkv {
 
@@ -27,21 +27,13 @@ namespace lmshao::lmmkv {
  * Extracts H.264 (Annex B) and AAC (ADTS) from MKV containers.
  * Public interface mirrors lmts::TSDemuxer style.
  */
-class MkvDemuxer {
+class MkvDemuxer final : public lmcore::NonCopyable {
 public:
     MkvDemuxer();
     ~MkvDemuxer();
 
-    // Non-copyable
-    MkvDemuxer(const MkvDemuxer &) = delete;
-    MkvDemuxer &operator=(const MkvDemuxer &) = delete;
-
-    // Movable
-    MkvDemuxer(MkvDemuxer &&) noexcept;
-    MkvDemuxer &operator=(MkvDemuxer &&) noexcept;
-
     // Class-based listener
-    void SetListener(IMkvDemuxListener *listener);
+    void SetListener(const std::shared_ptr<IMkvDemuxListener> &listener);
 
     // Track filtering: only emit frames for selected tracks (empty = all)
     void SetTrackFilter(const std::vector<uint64_t> &tracks);
@@ -51,12 +43,9 @@ public:
     void Stop();
     bool IsRunning() const;
 
-    // Parse data buffer (streaming). End-of-stream indicates no more data.
-    size_t Consume(const uint8_t *data, size_t size, bool end_of_stream);
+    // Parse data buffer (streaming)
+    size_t Consume(const uint8_t *data, size_t size);
 
-    // Stats
-    std::unordered_map<std::string, uint64_t> GetStatistics() const;
-    void ResetStatistics();
     void Reset();
 
 private:

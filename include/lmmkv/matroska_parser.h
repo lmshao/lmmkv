@@ -9,7 +9,8 @@
 #ifndef LMSHAO_LMMKV_MATROSKA_PARSER_H
 #define LMSHAO_LMMKV_MATROSKA_PARSER_H
 
-#include "lmmkv/ebml_reader.h"
+#include <cstddef>
+#include <cstdint>
 
 namespace lmshao::lmmkv {
 

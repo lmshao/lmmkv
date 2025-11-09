@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "lmmkv/ebml_reader.h"
+#include "ebml_reader.h"
 
 #include <cstring>
 
@@ -98,7 +98,5 @@ bool NextElement(BufferCursor &cur, EbmlElementHeader &out)
     out.size = size;
     return true;
 }
-
-// (Removed) Legacy Input overloads to enforce buffer-only API
 
 } // namespace lmshao::lmmkv

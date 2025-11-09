@@ -13,7 +13,6 @@
 
 namespace lmshao::lmmkv {
 
-// Class-based demux listener to replace function callbacks.
 class IMkvDemuxListener {
 public:
     virtual ~IMkvDemuxListener() = default;
@@ -47,5 +46,4 @@ public:
 };
 
 } // namespace lmshao::lmmkv
-
 #endif // LMSHAO_LMMKV_LISTENERS_H
